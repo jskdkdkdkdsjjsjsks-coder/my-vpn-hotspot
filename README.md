@@ -17,3 +17,8 @@ bash install.sh
 - socks5/http 代理（可设密码）
 - 热点透明转发（自动分流国内/国外流量）
 - 内置 DNS 解析修复，避免 DNS 污染和解析异常
+## 致谢
+
+- 基础思路参考自 [yonggekkk/google_vpn_proxy](https://github.com/yonggekkk/google_vpn_proxy)
+- 代理转发核心使用 [go-gost/gost](https://github.com/go-gost/gost)
+- DNS 解析使用 [NLnetLabs/unbound](https://github.com/NLnetLabs/unbound)
