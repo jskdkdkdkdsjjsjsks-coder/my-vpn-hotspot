@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ============================================================
-#  Google VPN 热点分享 一键安装脚本
-#  基于 yonggekkk/google_vpn_proxy，整合 gost + unbound + 看门狗
+#  VPN 热点分享 一键安装脚本
+#  整合 gost + unbound + 看门狗
 #  需要：Termux + root（Magisk/KernelSU）
 # ============================================================
 set -e
@@ -17,7 +17,7 @@ warn() { echo -e "${YELLOW}!!${RESET} $1"; }
 
 echo -e "${BOLD}"
 echo "================================================"
-echo "   Google VPN 热点分享 - 一键安装"
+echo "   VPN 热点分享 - 一键安装"
 echo "================================================"
 echo -e "${RESET}"
 
@@ -52,11 +52,12 @@ fi
 # ---------- 3. 下载 gost ----------
 if [ ! -x ./gost ]; then
     info "下载 gost..."
+    GOST_VER="3.0.0"
     ARCH="linux_arm64"
     curl -L -o gost.tar.gz -# --retry 2 --insecure \
-        "https://raw.githubusercontent.com/yonggekkk/google_vpn_proxy/main/gost_3.0.0_${ARCH}.tar.gz" \
+        "https://github.com/go-gost/gost/releases/download/v${GOST_VER}/gost_${GOST_VER}_${ARCH}.tar.gz" \
         || curl -L -o gost.tar.gz -# --retry 2 --insecure \
-        "https://gh-proxy.com/https://raw.githubusercontent.com/yonggekkk/google_vpn_proxy/main/gost_3.0.0_${ARCH}.tar.gz"
+        "https://gh-proxy.com/https://github.com/go-gost/gost/releases/download/v${GOST_VER}/gost_${GOST_VER}_${ARCH}.tar.gz"
     tar zxvf gost.tar.gz
     rm -f gost.tar.gz README* LICENSE*
     chmod +x ./gost
