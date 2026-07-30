@@ -10,7 +10,7 @@
 3. 运行：
 
 \`\`\`bash
-curl -o install.sh https://raw.githubusercontent.com/你的用户名/仓库名/main/install.sh
+curl -o install.sh https://raw.githubusercontent.com/jskdkdkdkdsjjsjsks-coder/my-vpn-hotspot/main/install.sh
 bash install.sh
 \`\`\`
 
