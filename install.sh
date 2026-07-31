@@ -183,6 +183,13 @@ forward-zone:
     forward-addr: 8.8.4.4@853#dns.google
 EOF
 
+cat > ~/unbound_run.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+cd ~ || exit 1
+unbound -c ~/unbound/unbound.conf -d
+EOF
+chmod +x ~/unbound_run.sh
+
 # ---------- 7. 下载国内 IP 分流名单 ----------
 info "下载国内 IP 分流名单..."
 curl -Ls --retry 2 --insecure -o ~/chnroute.txt \
@@ -267,7 +274,7 @@ restart_gost() {
     echo "\$(date '+%F %T') 代理失效，正在重启 gost..."
     pkill -9 -f './gost' 2>/dev/null
     sleep 1
-    screen -dmS myscreen bash -c './gost -C config.yaml'
+    screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
 }
 
 while true; do
@@ -294,9 +301,9 @@ detect_iface() {
 build_chain() { bash ~/build_gost_rules.sh; }
 
 ensure_unbound() {
-    if ! pgrep -f 'unbound -c' >/dev/null 2>&1; then
-        screen -dmS unbound-dns bash -c 'unbound -c ~/unbound/unbound.conf -d'
-        echo "$(date '+%F %T') [DNS] unbound 已(重新)启动" >> "$LOG"
+    if ! screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns"; then
+        screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
+        echo "$(date '+%F %T') [DNS] unbound-dns 会话已(重新)建立" >> "$LOG"
         sleep 1
     fi
 }
@@ -312,6 +319,15 @@ ensure_dns_rules() {
     if [ $? -ne 0 ]; then
         su -c "iptables -t nat -A PREROUTING -i $iface -p tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT"
         echo "$(date '+%F %T') [DNS] TCP 53重定向规则已补上 [$iface]" >> "$LOG"
+    fi
+    UDP_COUNT=$(su -c "iptables -t nat -S PREROUTING" | grep -c "udp --dport 53")
+    TCP_COUNT=$(su -c "iptables -t nat -S PREROUTING" | grep -c "tcp --dport 53")
+    if [ "$UDP_COUNT" -gt 1 ] || [ "$TCP_COUNT" -gt 1 ]; then
+        echo "$(date '+%F %T') [DNS] 发现重复DNS规则(udp:$UDP_COUNT tcp:$TCP_COUNT)，清理重建" >> "$LOG"
+        su -c "while iptables -t nat -D PREROUTING -i $iface -p udp --dport 53 -j REDIRECT --to-ports $DNS_PORT 2>/dev/null; do :; done"
+        su -c "while iptables -t nat -D PREROUTING -i $iface -p tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT 2>/dev/null; do :; done"
+        su -c "iptables -t nat -A PREROUTING -i $iface -p udp --dport 53 -j REDIRECT --to-ports $DNS_PORT"
+        su -c "iptables -t nat -A PREROUTING -i $iface -p tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT"
     fi
 }
 
@@ -425,6 +441,47 @@ echo "============================================"
 EOF
 chmod +x ~/show_ip.sh
 
+# ---------- 14.5 生成一键重置脚本（兜底手段） ----------
+cat > ~/reset_all.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 遇到玄学问题（时好时坏、重复进程）时，直接跑这个脚本清空重启
+echo "正在清空所有相关进程与规则..."
+pkill -9 -f 'unbound -c' 2>/dev/null
+pkill -9 -f './gost' 2>/dev/null
+pkill -9 -f 'watchdog.sh' 2>/dev/null
+pkill -9 -f 'keep_running.sh' 2>/dev/null
+pkill -9 SCREEN 2>/dev/null
+sleep 1
+rm -rf ~/.screen
+rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run
+
+IFACE=$(ifconfig 2>/dev/null | awk '
+/^[a-zA-Z0-9_]+:/ {iface=$1; sub(/:$/,"",iface)}
+/inet /{for(i=1;i<=NF;i++) if($i=="inet") print iface}
+' | grep -E 'ap_br|ap0|swlan|wlan[1-9]' | head -n1)
+
+if [ -n "$IFACE" ]; then
+    su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null"
+    su -c "while iptables -t nat -D PREROUTING -i $IFACE -p udp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null; do :; done"
+    su -c "while iptables -t nat -D PREROUTING -i $IFACE -p tcp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null; do :; done"
+    su -c "while iptables -t nat -D PREROUTING -i $IFACE -p tcp -j GOST_REDIRECT 2>/dev/null; do :; done"
+fi
+
+echo "重新启动所有服务..."
+cd ~
+screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
+sleep 1
+screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
+sleep 1
+screen -dmS watchdog bash ~/keep_running.sh ~/watchdog.sh
+screen -dmS hotspot_watchdog bash ~/keep_running.sh ~/hotspot_watchdog.sh
+sleep 3
+
+echo "完成，当前状态："
+bash ~/check_status.sh
+EOF
+chmod +x ~/reset_all.sh
+
 # ---------- 15. 写入 .bashrc 自动拉起逻辑（幂等，重复安装不会重复写入） ----------
 info "配置开机自动拉起..."
 MARKER="# === GVPN_AUTOSTART_BLOCK ==="
@@ -432,13 +489,14 @@ if ! grep -q "$MARKER" ~/.bashrc 2>/dev/null; then
 cat >> ~/.bashrc << EOF
 
 $MARKER
+screen -wipe >/dev/null 2>&1
 running() {
     screen -list 2>/dev/null | awk '{print \$1}' | awk -F. '{print \$2}' | grep -qx "\$1"
 }
 LOG=~/bashrc_start.log
 echo "\$(date '+%F %T') ---- .bashrc 开始执行 ----" >> "\$LOG"
 if ! running myscreen; then
-    cd ~ && screen -dmS myscreen bash -c './gost -C config.yaml'
+    cd ~ && screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
     echo "\$(date '+%F %T') 启动了 myscreen" >> "\$LOG"
 fi
 if ! running watchdog; then
@@ -450,7 +508,7 @@ if ! running hotspot_watchdog; then
     echo "\$(date '+%F %T') 启动了 hotspot_watchdog" >> "\$LOG"
 fi
 if ! running unbound-dns; then
-    screen -dmS unbound-dns bash -c 'unbound -c ~/unbound/unbound.conf -d'
+    screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
     echo "\$(date '+%F %T') 启动了 unbound-dns" >> "\$LOG"
 fi
 bash ~/show_ip.sh
@@ -464,9 +522,9 @@ fi
 
 # ---------- 16. 首次启动全部服务 ----------
 info "首次启动所有服务..."
-screen -dmS myscreen bash -c './gost -C config.yaml'
+screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
 sleep 1
-screen -dmS unbound-dns bash -c 'unbound -c ~/unbound/unbound.conf -d'
+screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
 sleep 1
 screen -dmS watchdog bash ~/keep_running.sh ~/watchdog.sh
 screen -dmS hotspot_watchdog bash ~/keep_running.sh ~/hotspot_watchdog.sh
