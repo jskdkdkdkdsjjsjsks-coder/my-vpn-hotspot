@@ -253,7 +253,6 @@ screen -list 2>/dev/null | grep hotspot_watchdog | cut -d. -f1 | awk '{print $1}
 pkill -9 -f 'hotspot_watchdog.sh' 2>/dev/null
 pkill -9 -f 'keep_running.sh.*hotspot' 2>/dev/null
 rm -f ~/.lock_hotspot_watchdog
-su -c "iptables -t nat -D PREROUTING -i ap_br_wlan2 -p tcp -j GOST_REDIRECT 2>/dev/null"
 su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null"
 screen -dmS hotspot_watchdog bash ~/keep_running.sh ~/hotspot_watchdog.sh
 EOF
@@ -293,9 +292,18 @@ LOG=~/bashrc_start.log
 
 detect_iface() {
     ifconfig 2>/dev/null | awk '
-    /^[a-zA-Z0-9_]+:/ {iface=$1; sub(/:$/,"",iface)}
-    /inet /{for(i=1;i<=NF;i++) if($i=="inet") print iface}
-    ' | grep -E 'ap_br|ap0|swlan|wlan[1-9]' | head -n1
+    /^[a-zA-Z0-9_]+:/ {
+        if (iface != "" && is_bcast && has_inet) print iface
+        iface=$1; sub(/:$/,"",iface)
+        is_bcast=($0 ~ /BROADCAST/)
+        has_inet=0
+        next
+    }
+    /inet /{ has_inet=1 }
+    END {
+        if (iface != "" && is_bcast && has_inet) print iface
+    }
+    ' | grep -viE '^(wlan0|lo|rmnet[0-9]*|ipsec[0-9]*|dummy[0-9]*|r_rmnet[0-9]*|ccmni[0-9]*|usb[0-9]*)$' | head -n1
 }
 
 build_chain() { bash ~/build_gost_rules.sh; }
@@ -456,9 +464,18 @@ rm -rf ~/.screen
 rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run
 
 IFACE=$(ifconfig 2>/dev/null | awk '
-/^[a-zA-Z0-9_]+:/ {iface=$1; sub(/:$/,"",iface)}
-/inet /{for(i=1;i<=NF;i++) if($i=="inet") print iface}
-' | grep -E 'ap_br|ap0|swlan|wlan[1-9]' | head -n1)
+/^[a-zA-Z0-9_]+:/ {
+    if (iface != "" && is_bcast && has_inet) print iface
+    iface=$1; sub(/:$/,"",iface)
+    is_bcast=($0 ~ /BROADCAST/)
+    has_inet=0
+    next
+}
+/inet /{ has_inet=1 }
+END {
+    if (iface != "" && is_bcast && has_inet) print iface
+}
+' | grep -viE '^(wlan0|lo|rmnet[0-9]*|ipsec[0-9]*|dummy[0-9]*|r_rmnet[0-9]*|ccmni[0-9]*|usb[0-9]*)$' | head -n1)
 
 if [ -n "$IFACE" ]; then
     su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null"
