@@ -43,7 +43,7 @@ pkill -9 -f 'keep_running.sh' 2>/dev/null || true
 pkill -9 -f './gost' 2>/dev/null || true
 pkill -9 -f 'unbound -c' 2>/dev/null || true
 pkill -9 SCREEN 2>/dev/null || true
-rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog
+rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run ~/.lock_gost_run
 rm -rf ~/.screen
 if su -c "id" >/dev/null 2>&1; then
     su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null" || true
@@ -157,6 +157,13 @@ resolvers:
         ttl: 5m0s
         async: true
 EOF
+
+cat > ~/gost_run.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+cd /data/data/com.termux/files/home || exit 1
+./gost -C config.yaml
+EOF
+chmod +x ~/gost_run.sh
 
 # ---------- 6. 生成 unbound 配置（修复 DNS 污染+回程 NAT 问题） ----------
 info "生成 unbound DNS 配置..."
@@ -272,8 +279,6 @@ check_alive() {
 restart_gost() {
     echo "\$(date '+%F %T') 代理失效，正在重启 gost..."
     pkill -9 -f './gost' 2>/dev/null
-    sleep 1
-    screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
 }
 
 while true; do
@@ -392,7 +397,7 @@ while true; do
         STATE_APPLIED=0
         CUR_IFACE=""
     fi
-    sleep 15
+    sleep 8
 done
 EOF
 chmod +x ~/hotspot_watchdog.sh
@@ -461,7 +466,7 @@ pkill -9 -f 'keep_running.sh' 2>/dev/null
 pkill -9 SCREEN 2>/dev/null
 sleep 1
 rm -rf ~/.screen
-rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run
+rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run ~/.lock_gost_run
 
 IFACE=$(ifconfig 2>/dev/null | awk '
 /^[a-zA-Z0-9_]+:/ {
@@ -486,7 +491,7 @@ fi
 
 echo "重新启动所有服务..."
 cd ~
-screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
+screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
 sleep 1
 screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
 sleep 1
@@ -513,7 +518,7 @@ running() {
 LOG=~/bashrc_start.log
 echo "\$(date '+%F %T') ---- .bashrc 开始执行 ----" >> "\$LOG"
 if ! running myscreen; then
-    cd ~ && screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
+    screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
     echo "\$(date '+%F %T') 启动了 myscreen" >> "\$LOG"
 fi
 if ! running watchdog; then
@@ -539,7 +544,7 @@ fi
 
 # ---------- 16. 首次启动全部服务 ----------
 info "首次启动所有服务..."
-screen -dmS myscreen bash -c "cd /data/data/com.termux/files/home && ./gost -C config.yaml"
+screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
 sleep 1
 screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
 sleep 1
