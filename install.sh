@@ -381,9 +381,31 @@ clear_rules() {
     echo "$(date '+%F %T') [热点转发] 热点关闭，已清理" >> "$LOG"
 }
 
+# 孤儿进程清扫：进程还活着但screen会话没了（Android偶尔会杀掉screen壳但漏杀子进程）
+reap_orphans() {
+    if pgrep -f './gost' >/dev/null 2>&1 && ! screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
+        pkill -9 -f './gost' 2>/dev/null
+        rm -f ~/.lock_gost_run
+        sleep 1
+        screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
+        echo "$(date '+%F %T') [自愈] 发现gost孤儿进程，已清理并重新纳管" >> "$LOG"
+    fi
+
+    UNBOUND_COUNT=$(pgrep -f 'unbound -c' 2>/dev/null | wc -l)
+    HAS_UNBOUND_SCREEN=$(screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns" && echo 1 || echo 0)
+    if [ "$UNBOUND_COUNT" -gt 1 ] || { [ "$UNBOUND_COUNT" -ge 1 ] && [ "$HAS_UNBOUND_SCREEN" = "0" ]; }; then
+        pkill -9 -f 'unbound -c' 2>/dev/null
+        rm -f ~/.lock_unbound_run
+        sleep 1
+        screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
+        echo "$(date '+%F %T') [自愈] 发现unbound孤儿/重复进程，已清理并重新纳管" >> "$LOG"
+    fi
+}
+
 STATE_APPLIED=0
 CUR_IFACE=""
 while true; do
+    reap_orphans
     IFACE=$(detect_iface)
     if [ -n "$IFACE" ]; then
         ensure_unbound
