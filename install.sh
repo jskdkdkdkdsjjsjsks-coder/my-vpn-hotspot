@@ -383,6 +383,7 @@ clear_rules() {
 
 # 孤儿进程清扫：进程还活着但screen会话没了（Android偶尔会杀掉screen壳但漏杀子进程）
 reap_orphans() {
+    screen -wipe >/dev/null 2>&1
     if pgrep -f './gost' >/dev/null 2>&1 && ! screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
         pkill -9 -f './gost' 2>/dev/null
         rm -f ~/.lock_gost_run
@@ -450,6 +451,7 @@ chmod +x ~/keep_running.sh
 # ---------- 13. 生成体检脚本 ----------
 cat > ~/check_status.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
+screen -wipe >/dev/null 2>&1
 echo "================ 服务状态检查 ================"
 for name in myscreen watchdog hotspot_watchdog unbound-dns; do
     if screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "$name"; then
