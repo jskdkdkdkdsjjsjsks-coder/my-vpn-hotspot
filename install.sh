@@ -314,7 +314,7 @@ detect_iface() {
 build_chain() { bash ~/build_gost_rules.sh; }
 
 ensure_unbound() {
-    if ! screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns"; then
+    if ! screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns"; then
         screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
         echo "$(date '+%F %T') [DNS] unbound-dns 会话已(重新)建立" >> "$LOG"
         sleep 1
@@ -384,7 +384,7 @@ clear_rules() {
 # 孤儿进程清扫：进程还活着但screen会话没了（Android偶尔会杀掉screen壳但漏杀子进程）
 reap_orphans() {
     screen -wipe >/dev/null 2>&1
-    if pgrep -f './gost' >/dev/null 2>&1 && ! screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
+    if pgrep -f './gost' >/dev/null 2>&1 && ! screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
         pkill -9 -f './gost' 2>/dev/null
         rm -f ~/.lock_gost_run
         sleep 1
@@ -393,7 +393,7 @@ reap_orphans() {
     fi
 
     UNBOUND_COUNT=$(pgrep -f 'unbound -c' 2>/dev/null | wc -l)
-    HAS_UNBOUND_SCREEN=$(screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns" && echo 1 || echo 0)
+    HAS_UNBOUND_SCREEN=$(screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns" && echo 1 || echo 0)
     if [ "$UNBOUND_COUNT" -gt 1 ] || { [ "$UNBOUND_COUNT" -ge 1 ] && [ "$HAS_UNBOUND_SCREEN" = "0" ]; }; then
         pkill -9 -f 'unbound -c' 2>/dev/null
         rm -f ~/.lock_unbound_run
@@ -454,7 +454,7 @@ cat > ~/check_status.sh << 'EOF'
 screen -wipe >/dev/null 2>&1
 echo "================ 服务状态检查 ================"
 for name in myscreen watchdog hotspot_watchdog unbound-dns; do
-    if screen -list 2>/dev/null | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "$name"; then
+    if screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "$name"; then
         echo "  [运行中] $name"
     else
         echo "  [已停止] $name  <-- 需要手动拉起"
@@ -537,7 +537,7 @@ cat >> ~/.bashrc << EOF
 $MARKER
 screen -wipe >/dev/null 2>&1
 running() {
-    screen -list 2>/dev/null | awk '{print \$1}' | awk -F. '{print \$2}' | grep -qx "\$1"
+    screen -list 2>/dev/null | grep -vi 'dead' | awk '{print \$1}' | awk -F. '{print \$2}' | grep -qx "\$1"
 }
 LOG=~/bashrc_start.log
 echo "\$(date '+%F %T') ---- .bashrc 开始执行 ----" >> "\$LOG"
