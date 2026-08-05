@@ -321,6 +321,15 @@ ensure_unbound() {
     fi
 }
 
+ensure_gost() {
+    if ! screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
+        rm -f ~/.lock_gost_run
+        screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
+        echo "$(date '+%F %T') [代理] myscreen 会话已(重新)建立" >> "$LOG"
+        sleep 1
+    fi
+}
+
 ensure_dns_rules() {
     local iface=$1
     su -c "iptables -t nat -C PREROUTING -i $iface -p udp --dport 53 -j REDIRECT --to-ports $DNS_PORT" 2>/dev/null
@@ -407,9 +416,10 @@ STATE_APPLIED=0
 CUR_IFACE=""
 while true; do
     reap_orphans
+    ensure_gost
+    ensure_unbound
     IFACE=$(detect_iface)
     if [ -n "$IFACE" ]; then
-        ensure_unbound
         init_chain_once
         ensure_entry "$IFACE"
         ensure_dns_rules "$IFACE"
