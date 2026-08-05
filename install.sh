@@ -43,7 +43,7 @@ pkill -9 -f 'keep_running.sh' 2>/dev/null || true
 pkill -9 -f './gost' 2>/dev/null || true
 pkill -9 -f 'unbound -c' 2>/dev/null || true
 pkill -9 SCREEN 2>/dev/null || true
-rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run ~/.lock_gost_run
+rm -rf ~/.lock_watchdog.d ~/.lock_hotspot_watchdog.d ~/.lock_unbound_run.d ~/.lock_gost_run.d
 rm -rf ~/.screen
 if su -c "id" >/dev/null 2>&1; then
     su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null" || true
@@ -259,7 +259,7 @@ echo "$(date '+%F %T') 国内IP列表已更新，共 $(wc -l < $CHNLIST) 条" >>
 screen -list 2>/dev/null | grep hotspot_watchdog | cut -d. -f1 | awk '{print $1}' | xargs -r kill
 pkill -9 -f 'hotspot_watchdog.sh' 2>/dev/null
 pkill -9 -f 'keep_running.sh.*hotspot' 2>/dev/null
-rm -f ~/.lock_hotspot_watchdog
+rm -rf ~/.lock_hotspot_watchdog.d
 su -c "iptables -t nat -F GOST_REDIRECT 2>/dev/null"
 screen -dmS hotspot_watchdog bash ~/keep_running.sh ~/hotspot_watchdog.sh
 EOF
@@ -323,7 +323,7 @@ ensure_unbound() {
 
 ensure_gost() {
     if ! screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
-        rm -f ~/.lock_gost_run
+        rm -rf ~/.lock_gost_run.d
         screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
         echo "$(date '+%F %T') [代理] myscreen 会话已(重新)建立" >> "$LOG"
         sleep 1
@@ -395,7 +395,7 @@ reap_orphans() {
     screen -wipe >/dev/null 2>&1
     if pgrep -f './gost' >/dev/null 2>&1 && ! screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "myscreen"; then
         pkill -9 -f './gost' 2>/dev/null
-        rm -f ~/.lock_gost_run
+        rm -rf ~/.lock_gost_run.d
         sleep 1
         screen -dmS myscreen bash ~/keep_running.sh ~/gost_run.sh
         echo "$(date '+%F %T') [自愈] 发现gost孤儿进程，已清理并重新纳管" >> "$LOG"
@@ -405,7 +405,7 @@ reap_orphans() {
     HAS_UNBOUND_SCREEN=$(screen -list 2>/dev/null | grep -vi 'dead' | awk '{print $1}' | awk -F. '{print $2}' | grep -qx "unbound-dns" && echo 1 || echo 0)
     if [ "$UNBOUND_COUNT" -gt 1 ] || { [ "$UNBOUND_COUNT" -ge 1 ] && [ "$HAS_UNBOUND_SCREEN" = "0" ]; }; then
         pkill -9 -f 'unbound -c' 2>/dev/null
-        rm -f ~/.lock_unbound_run
+        rm -rf ~/.lock_unbound_run.d
         sleep 1
         screen -dmS unbound-dns bash ~/keep_running.sh ~/unbound_run.sh
         echo "$(date '+%F %T') [自愈] 发现unbound孤儿/重复进程，已清理并重新纳管" >> "$LOG"
@@ -439,20 +439,39 @@ chmod +x ~/hotspot_watchdog.sh
 cat > ~/keep_running.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 SCRIPT=$1
-LOCKFILE="/data/data/com.termux/files/home/.lock_$(basename $SCRIPT .sh)"
+LOCKDIR="/data/data/com.termux/files/home/.lock_$(basename $SCRIPT .sh).d"
+LOG=~/bashrc_start.log
 
-if [ -f "$LOCKFILE" ]; then
-    OLDPID=$(cat "$LOCKFILE")
-    if kill -0 "$OLDPID" 2>/dev/null; then
-        echo "$(date '+%F %T') $SCRIPT 已有实例在运行(PID $OLDPID)，本次不重复启动" >> ~/bashrc_start.log
-        exit 0
+acquire_lock() {
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+        echo $$ > "$LOCKDIR/pid"
+        return 0
     fi
-fi
-echo $$ > "$LOCKFILE"
+    for i in 1 2 3; do
+        [ -f "$LOCKDIR/pid" ] && break
+        sleep 0.2
+    done
+    if [ -f "$LOCKDIR/pid" ]; then
+        OLDPID=$(cat "$LOCKDIR/pid" 2>/dev/null)
+        if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
+            echo "$(date '+%F %T') $SCRIPT 已有实例在运行(PID $OLDPID)，本次不重复启动" >> "$LOG"
+            return 1
+        fi
+    fi
+    rmdir "$LOCKDIR" 2>/dev/null
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+        echo $$ > "$LOCKDIR/pid"
+        return 0
+    fi
+    return 1
+}
+
+acquire_lock || exit 0
+trap 'rm -rf "$LOCKDIR"' EXIT
 
 while true; do
     bash "$SCRIPT"
-    echo "$(date '+%F %T') $SCRIPT 意外退出，5秒后重启" >> ~/bashrc_start.log
+    echo "$(date '+%F %T') $SCRIPT 意外退出，5秒后重启" >> "$LOG"
     sleep 5
 done
 EOF
@@ -500,7 +519,7 @@ pkill -9 -f 'keep_running.sh' 2>/dev/null
 pkill -9 SCREEN 2>/dev/null
 sleep 1
 rm -rf ~/.screen
-rm -f ~/.lock_watchdog ~/.lock_hotspot_watchdog ~/.lock_unbound_run ~/.lock_gost_run
+rm -rf ~/.lock_watchdog.d ~/.lock_hotspot_watchdog.d ~/.lock_unbound_run.d ~/.lock_gost_run.d
 
 IFACE=$(ifconfig 2>/dev/null | awk '
 /^[a-zA-Z0-9_]+:/ {
