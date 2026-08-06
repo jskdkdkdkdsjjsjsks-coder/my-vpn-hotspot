@@ -552,6 +552,13 @@ screen -dmS watchdog bash ~/keep_running.sh ~/watchdog.sh
 screen -dmS hotspot_watchdog bash ~/keep_running.sh ~/hotspot_watchdog.sh
 sleep 3
 
+echo "正在预热DNS连接（首次连接上游可能需要几秒到几十秒）..."
+timeout 60 dig @127.0.0.1 -p 5353 www.google.com +short >/dev/null 2>&1
+echo "预热完成"
+
+echo "清理僵尸会话记录..."
+screen -wipe >/dev/null 2>&1
+
 echo "完成，当前状态："
 bash ~/check_status.sh
 EOF
