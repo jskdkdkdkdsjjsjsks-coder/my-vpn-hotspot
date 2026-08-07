@@ -177,17 +177,18 @@ server:
     do-ip6: no
     do-udp: yes
     do-tcp: yes
-    tls-cert-bundle: /data/data/com.termux/files/usr/etc/tls/cert.pem
     cache-min-ttl: 0
     cache-max-ttl: 300
+    prefetch: yes
     logfile: "/data/data/com.termux/files/home/unbound/unbound.log"
     verbosity: 1
 
 forward-zone:
     name: "."
-    forward-tls-upstream: yes
-    forward-addr: 8.8.8.8@853#dns.google
-    forward-addr: 8.8.4.4@853#dns.google
+    forward-addr: 8.8.8.8
+    forward-addr: 8.8.4.4
+    forward-addr: 1.1.1.1
+    forward-addr: 1.0.0.1
 EOF
 
 cat > ~/unbound_run.sh << 'EOF'
