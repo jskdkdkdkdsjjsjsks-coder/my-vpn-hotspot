@@ -284,6 +284,7 @@ restart_gost() {
 
 while true; do
     check_alive || restart_gost
+    screen -wipe >/dev/null 2>&1
     sleep 180
 done
 EOF
@@ -572,6 +573,8 @@ if ! grep -q "$MARKER" ~/.bashrc 2>/dev/null; then
 cat >> ~/.bashrc << EOF
 
 $MARKER
+if [ -z "$GVPN_AUTOSTART_DONE" ]; then
+export GVPN_AUTOSTART_DONE=1
 screen -wipe >/dev/null 2>&1
 running() {
     screen -list 2>/dev/null | grep -vi 'dead' | awk '{print \$1}' | awk -F. '{print \$2}' | grep -qx "\$1"
@@ -596,6 +599,7 @@ if ! running unbound-dns; then
 fi
 bash ~/show_ip.sh
 bash ~/update_chnroute.sh
+fi
 $MARKER
 EOF
     info ".bashrc 自启动逻辑已添加"
