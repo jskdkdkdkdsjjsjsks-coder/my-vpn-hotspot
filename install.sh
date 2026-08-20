@@ -177,6 +177,8 @@ server:
     do-ip6: no
     do-udp: yes
     do-tcp: yes
+    num-threads: 1
+    so-reuseport: no
     cache-min-ttl: 0
     cache-max-ttl: 300
     prefetch: yes
