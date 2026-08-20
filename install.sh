@@ -573,8 +573,10 @@ if ! grep -q "$MARKER" ~/.bashrc 2>/dev/null; then
 cat >> ~/.bashrc << EOF
 
 $MARKER
-if [ -z "$GVPN_AUTOSTART_DONE" ]; then
-export GVPN_AUTOSTART_DONE=1
+GVPN_MARKER=~/.bashrc_running.d
+if mkdir "\$GVPN_MARKER" 2>/dev/null; then
+( sleep 10; rmdir "\$GVPN_MARKER" 2>/dev/null ) &
+disown 2>/dev/null
 screen -wipe >/dev/null 2>&1
 running() {
     screen -list 2>/dev/null | grep -vi 'dead' | awk '{print \$1}' | awk -F. '{print \$2}' | grep -qx "\$1"
